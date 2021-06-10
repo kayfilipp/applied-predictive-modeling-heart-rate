@@ -1,0 +1,2 @@
+SMOTE Algorithm 
+	used often for datasets 
