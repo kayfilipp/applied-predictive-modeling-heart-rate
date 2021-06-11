@@ -1,0 +1,68 @@
+---
+title: "Applied Predictive Modeling - Predicting Heart Disease"
+author: "Filipp Krasovsky & Rudy Fasano"
+date: "6/10/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+For your technical report:
+Include a clearly defined problem statement.
+Describe your analysis of the data.
+Include a detailed solution.
+
+This report focuses on analyzing a collection of anonymized medical records (n=303) with the intent of designing a model that can accurately predict the incidence of heart disease given an array of biological factors such as age, sex, blood cholestrol, etc. The modeling question before us stands as follows: "Given some combination of medical information about a patient, is a patient more likely than not to contract heart disease?" 
+
+Data was collected from Kaggle (citation needed here) and contains a total of 303 data points with 13 predictors and a single response variable (output), which serves as a binary indicator of whether or not an individual has contracted heart disease. Because of the nature of our response variable, we have no choice but to frame the problem as a classification challenge rather than pure regression - that is, OLS and similar models are excluded, but we're still able to utilize alternative classifiers such as logistic regression, SVM, KNN, etc. As a preliminary note, our data does not have any missing values.
+
+We begin with an overview of each variable's interpretation:
+
+Age: A discrete ordinal variable which indicates the age of the patient.
+Sex: A binary categorical variable where 0=female and 1=male \
+cp:  
+trtbps:
+chol: 
+fbs:
+restecg:
+thalachh:
+exng:
+oldpeak:
+slp:
+caa:
+thall:
+
+```{r}
+#load in our dataset
+df = read.csv('heart.csv',TRUE)
+```
+
+We begin by noting that there is no class imbalance in our dataset:
+
+```{r}
+#plot a histogram of the response variable
+hist(df$output,main="Ditribution of Response Variable")
+```
+```{r}
+#print distribution
+print(table(df$output)/nrow(df))
+```
+As demonstrated, we have a low class imbalance and probably will not need any sampling methods that require us to balance classes across samples, which allows us to move straight into k-fold cross validation, bagging, and bootstrapping.
+Of our predictor space, five variables are non-categorical, so we can proceed by examining their distributions relative to the response variable as well as any possible between-predictor relationships:
+
+```{r}
+require(ggplot2)
+ggplot(df,aes(x=age,group=output,fill=output))+geom_bar()
+```
+Starting with age, we observe that that the incidence of heart dominates samples with ages <= 55, while being more or less balanced for larger age values.We can also confirm this with a contingency table:
+
+```{r}
+table(df$age,df$output)
+```
+
+
+
+
+
