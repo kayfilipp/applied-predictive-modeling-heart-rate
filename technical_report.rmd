@@ -289,7 +289,7 @@ print(nnetfit.roc)
 Our Neural Net also performs very well, but no more than logistic regression. We would consider parsimony a driving factor in modeling strategy and still take logistic regression over NN. 
 
 ```{r}
-#add RF here 
+#RF
 set.seed(972)
 library(randomForest)
 rfmodel<- train(x=predictors.train,y=response.train,method="rf",metric="ROC",trace=FALSE,trControl=ctrl)
@@ -300,6 +300,17 @@ print(rf.roc)
 ```
 Our RF model also outperforms some more complex counterparts such as SVM and NN, making it another prime candidate for model selection,
 but ultimately less parsimonious than logistic regression. We can consider boosted trees as another alternative:
+
+```{r}
+#Boosted trees
+set.seed(2055)
+gbmGrid <- expand.grid(.interaction.depth = seq(1, 7, by = 2), .n.trees = seq(100, 1000, by = 100), .shrinkage = c(0.01, 0.1), .n.minobsinnode=30)
+gbmTune <- train(predictors.train, response.train, method = "gbm", metric="ROC",tuneGrid = gbmGrid, verbose = FALSE,trControl=ctrl)
+gbm.predict = predict(gbmTune,predictors.test,type='prob')
+gbm.roc <- roc(predictor=gbm.predict$yes,response=response.test,levels=rev(levels(response.test)))
+print(gbm.roc)
+```
+Our boosted tree performs at about the same level as our RF model. Based on computational requirements, we would prefer the RF model between these two, but ultimately prefer glm.
 
 
 
