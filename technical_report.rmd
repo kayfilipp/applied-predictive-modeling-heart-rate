@@ -21,33 +21,43 @@ Data was collected from Kaggle (citation needed here) and contains a total of 30
 We begin with an overview of each variable's interpretation:
 
 Age: A discrete ordinal variable which indicates the age of the patient.
-Sex: A binary categorical variable where 0=female and 1=male \
-cp:  
-trtbps:
-chol: 
-fbs:
-restecg:
-thalachh:
-exng:
-oldpeak:
-slp:
-caa:
-thall:
+Sex: A binary categorical variable where 0=female and 1=male.
+cp:  Chest Pain Type, categorical variable: 1 = typical angina, 2 = atypical angina, 3 = non-anginal pain, 4 = asymptomatic
+trtbps: resting blood pressure in mm Hg - continuous ratio variable.
+chol: cholestrol in mg/dl - continuous ratio variable
+fbs: a categorical variable where 1 indicates that fasting blood sugar > 120 mg/dl.
+restecg: resting electrocardiographic results where 0 = normal, 1 = wave abnormality, 2 = probably ventricular hypertrophy.
+thalachh: maximum heart rate achieved (ratio continuous variable)
+exng: an indicator variable where 1 indicates the presence of exercise induced angina. 
+oldpeak: Previous Peak - a ratio continuous variable with no context available in the dataset.
+slp: slope - no context was available for this dataset. 
+caa: number of major vessels.
+thall: the thal rate - a discrete ratio variable with no context provided.
 
 ```{r}
 #load in our dataset
 df = read.csv('heart.csv',TRUE)
+df$output = as.factor(df$output)
+df$cp = as.factor(df$cp)
+df$exng = as.factor(df$exng)
+df$thall = as.factor(df$thall)
+df$caa = as.factor(df$caa)
+df$restecg = as.factor(df$restecg)
+df$sex = as.factor(df$sex)
+df$fbs = as.factor(df$sex)
+df$slp = as.factor(df$slp)
+df$caa = as.factor(df$caa)
 ```
 
 We begin by noting that there is no class imbalance in our dataset:
 
 ```{r}
 #plot a histogram of the response variable
-hist(df$output,main="Ditribution of Response Variable")
+plot(df$output,main="Ditribution of Response Variable")
 ```
 ```{r}
-#print distribution
-print(table(df$output)/nrow(df))
+#print distribution by percentage
+print((table(df$output)/nrow(df))*100)
 ```
 As demonstrated, we have a low class imbalance and probably will not need any sampling methods that require us to balance classes across samples, which allows us to move straight into k-fold cross validation, bagging, and bootstrapping.
 Of our predictor space, five variables are non-categorical, so we can proceed by examining their distributions relative to the response variable as well as any possible between-predictor relationships:
@@ -56,13 +66,117 @@ Of our predictor space, five variables are non-categorical, so we can proceed by
 require(ggplot2)
 ggplot(df,aes(x=age,group=output,fill=output))+geom_bar()
 ```
-Starting with age, we observe that that the incidence of heart dominates samples with ages <= 55, while being more or less balanced for larger age values.We can also confirm this with a contingency table:
+Starting with age, we observe that that the incidence of heart dominates samples with ages <= 55, while being more or less balanced for larger age values. When we observe this relationship for resting heart rates (trtbps), the most obvious face-value observation is that resting heart rate values smaller than 120 bps are disproportionately associated with the risk of heart attack (output=1):
 
 ```{r}
-table(df$age,df$output)
+ggplot(df,aes(x=trtbps,group=output,fill=output))+geom_bar(stat = 'count')+ggtitle("resting heart rates vs. Heart Attack")
+```
+Another intuitive hypothesis is that higher rates of cholesterol are strongly associated with a higher incidence of heart attack.
+For this examination, we can use a box and whisker plot. Our findings suggest that those samples with an incidence of heart attack had a smaller average cholesterol value but more outliers gravitating towards the higher end of cholesterol levels.
+
+```{r}
+plot(df$output,df$chol,main="Boxplot of Cholesterol vs. Heart Attack Response",xlab="Heart Attack (0=no 1=yes)",ylab="Cholesterol levels")
+```
+However, given the motivation to explore this relationship further, we can consider a t-test to determine if the mean cholesterol levels are significantly different between those who did and did not have a heart attack:
+```{r}
+response.1 <- which(df$output==1)
+x1 = df[response.1,]$chol 
+x2 = df[-response.1,]$chol 
+#conduct a t test for difference of means 
+xtest = t.test(x1,x2)
+print(xtest$p.value)
+```
+Therefore, at a significance level of alpha = 0.05 that we do not have enough evidence to reject the null hypothesis that the difference in average cholesterol levels between patients who did and did not have a heart attack is zero.
+
+Notable findings about the imbalance of heart attack patients, however, include the gender disparity. 
+We first begin by  observing the imbalance in data between men and women (0=women, 1=men):
+
+```{r}
+tb.sex = (as.table(table(df$sex,df$output)))
+print(tb.sex)
+```
+We find that while there are 96 female sample points, there are 207 male points, more than twice the number of female participants.
+Notwithstanding this, we find that the ratio of women who get heart attacks is much higher than that of men:
+
+```{r}
+print(prop.table(tb.sex,margin=1))
+```
+Other notable findings include the observation that heart attacks are significantly less likely for the lowest possible cp level.
+Although the description of this dataset labels data values 1-4 as increasing levels of angina pain, there doesn't seem to be any presence of values higher than 3. Consequently, we have to assume that the lowest level of the cp column is either the absence of angina entirely or an indicator of the presence of normal angina. Either way, the intuition still stands that non-acute/non-irregular levels of Angina (as well as the absence of angina entirely) are less likely to be associated with the incidence of a heart attack:
+
+```{r}
+ggplot(df,aes(x=cp,group=output,fill=output))+geom_bar(stat='count', position = 'fill')+ggtitle("Chest Pain vs. Heart Attack")
+```
+Detectiong of cardiographic results from the restecg variable suggest that the incidence of wave abnormality is significantly more associated with the risk of heart attack than normal results, and significantly moreso compared to incidences of ventricular hypertrophy. While this teams lacks the medical background to understand the implications of hypertrophy or wave abnormality, we can still understand that these conditions are abnormal, and so, intuitively affect heart functions.
+
+```{r}
+ggplot(df,aes(x=restecg,group=output,fill=output))+geom_bar(stat='count', position = 'fill')+ggtitle("Cardiographic Results vs. Heart Attack")
+```
+Carrying on in the same vein, our team also identified an intuitive relationship between the response variable and the thalachh variable, which corresponds to the maximum heart rate achieved. We find that higher maximum heart rates correspond more frequently to a higher incidence of heart attack:
+
+```{r}
+ggplot(df,aes(x=thalachh,group=output,fill=output))+geom_bar()+ggtitle("Max. Heart rate vs. Heart Attack")
+```
+We further confirm this intuition with a t-test at a significance level of 0.05:
+```{r}
+x = subset(df,output==1)$thalachh 
+y = subset(df,output==0)$thalachh
+thaltest = t.test(x,y)
+print(thaltest)
+```
+The mean max. heart rate for those who experienced a heart attack is significantly higher than their counterparts, confirming our intuition.
+Conversely, the data supports the claim that individuals who suffer from exercise induced angina are less likely to suffer a heart attack.
+While this was largely surprising during EDA, an intuitive explanation might include that individuals suffering from an exercise-induced condition may be more resistant to a heart attack based on their athletic activity:
+
+```{r}
+ggplot(df,aes(x=exng,group=output,fill=output))+geom_bar()+ggtitle("Exercise Induced Angina (1=yes) vs. Heart Attack")
+```
+
+Furthermore, while we were unable to determine the context for the slope variable (slp) in the dataset, we did find that it significantly separates heart attack incidence based on its three unique values (0-2). In particular, we find that patients with a slope of 2 are significantly more likely to experience a heart attack:
+
+```{r}
+df$slp = as.factor(df$slp)
+ggplot(df,aes(x=slp,group=output,fill=output))+geom_bar(stat='count',position='fill')+ggtitle("slope vs. Heart Attack")
+```
+Similarly, while we found no background explanation on how to interpret the thall rate, we did find that those patients with a value of 0 and 2 had a significantly higher association with heart attack than values of 1 and 3:
+
+```{r}
+ggplot(df,aes(x=thall,group=output,fill=output))+geom_bar(stat='count',position='fill')+ggtitle("Thall Rate vs. Heart Attack")
+```
+The number of major vessels also seems to have a significant effect on separating our response variable - individuals with zero and four major vessels are disproportionately associated with the incidence of heart attack:
+
+```{r}
+ggplot(df,aes(x=caa,group=output,fill=output))+geom_bar(stat='count',position='fill')+ggtitle("Number of Major Vessels vs. Heart Attack")
 ```
 
 
+Finally, we find that individuals with a lower resting blood sugar seem to have a higher incidence of heart attacks.
 
+```{r}
+ggplot(df,aes(x=fbs,group=output,fill=output))+geom_bar(stat='count', position = 'fill')+ggtitle("Fasting Blood Sugar vs. Heart Attack")
+```
+Moving forward with data pre-processing, we can center and scale our continuous predictors: 
+age, trtbps, chol, thalachh, and oldpeak.
 
+Because our predictor space is only 13 variables and n = 303, we can afford a 90-10 split between our training and testing set as well.
+We will also engage in a 10-fold cross validation for model training.
+
+```{r}
+require(caret)
+
+#center and scale the continuous variables. inspecting
+df = predict(preProcess(df,method=c("center","scale")),df)
+
+trainingRows <- createDataPartition(df$output,p=0.9,list=FALSE)
+
+predictors = subset(df,select=-c(output))
+response   = df$output 
+
+predictors.train = predictors[trainingRows,]
+response.train   = response[trainingRows]
+
+predictors.test  = predictors[-trainingRows,]
+response.test    = response[-trainingRows]
+
+```
 
