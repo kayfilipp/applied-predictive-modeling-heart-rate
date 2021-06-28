@@ -312,5 +312,16 @@ print(gbm.roc)
 ```
 Our boosted tree performs at about the same level as our RF model. Based on computational requirements, we would prefer the RF model between these two, but ultimately prefer glm.
 
+We plot the ROC curves for our models together to determine that an all-predictor logistic regression satisfies our modeling objective best.
+```{r}
+plot(glm2.roc,col='red',main="Plot of ROC curves",lty=1,type="o",pch="*")
+lines(gbm.roc,col='lightgreen',lty=2)
+lines(knn.roc,col='navyblue',lty=2)
+lines(nnetfit.roc,col='pink',lty=2)
+lines(nsc.roc,col='green',lty=2)
+lines(rf.roc,col='purple',lty=2)
+lines(svm.roc,col='gray',lty=2)
+legend(0.6,0.6,legend=c("glm (all)","gbm","knn","nnet","nsc","rf","svm"), col=c("red","lightgreen","navyblue","pink","green","purple","gray"),pch=c("o"),lty=c(1,2,2,2,2,2,2),ncol=1)
+```
 
 
