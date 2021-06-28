@@ -164,13 +164,20 @@ We will also engage in a 10-fold cross validation for model training.
 ```{r}
 require(caret)
 
+cont_vars = c("age","trtbps","chol","thalachh","oldpeak")
+df.cont <- df[,cont_vars]
+print(findCorrelation(cor(df.cont))) #no correlated predictors for our continuous variables.
+
+df$output = ifelse(df$output==1,"yes","no")
+
 #center and scale the continuous variables. inspecting
 df = predict(preProcess(df,method=c("center","scale")),df)
 
 trainingRows <- createDataPartition(df$output,p=0.9,list=FALSE)
 
 predictors = subset(df,select=-c(output))
-response   = df$output 
+response   = data.frame(df$output)
+names(response) = "response"
 
 predictors.train = predictors[trainingRows,]
 response.train   = response[trainingRows]
@@ -178,5 +185,121 @@ response.train   = response[trainingRows]
 predictors.test  = predictors[-trainingRows,]
 response.test    = response[-trainingRows]
 
+reduced.train    = df.cont[trainingRows,]
+reduced.test     = df.cont[-trainingRows,]
+
 ```
+Because this is a classification challenge, we can consider classification models only (ie Logistc regression, QDA/LDA, Knn, etc.)
+We can create a hunch for whether or not the business problem is linearly separable by looking at scatter plots of our continuous data:
+
+```{r}
+ggplot(df,aes(x=trtbps,y=oldpeak,group=output))+geom_point(aes(color=output))+ggtitle("Old Peak vs. resting blood pressure")
+```
+```{r}
+ggplot(df,aes(x=trtbps,y=thalachh,group=output))+geom_point(aes(color=output))+ggtitle("Highest Heart Rate Achieved vs. resting blood pressure")
+```
+
+```{r}
+ggplot(df,aes(x=trtbps,y=chol,group=output))+geom_point(aes(color=output))+ggtitle("Cholesterol vs. resting blood pressure")
+```
+```{r}
+ggplot(df,aes(x=trtbps,y=age,group=output))+geom_point(aes(color=output))+ggtitle("Age vs. resting blood pressure")
+```
+Based on a preliminary assessment, it seems unlikely that the problem would be linearly separable between the two response values.
+From here, we would favor nonlinear separation methods like logistic regression, QDA, NN, SVM, KNN, NSC, and Random Forests.
+Given that only five our predictors are numeric, we would have to limit the application of qda/svm/etc to only those predictors.
+
+```{r}
+ctrl <- trainControl(summaryFunction = twoClassSummary, classProbs = TRUE)
+knngrid <- data.frame(.k=c(1:40))
+
+response.train = as.factor(response.train)
+response.test =  as.factor(response.test)
+
+#KNN 
+set.seed(476)
+knnfit <- train(predictors.train, as.factor(response.train),
+method = "knn",
+metric = "ROC",
+tuneGrid = knngrid,
+trControl = ctrl)
+
+knn.predict <- predict(knnfit,predictors.test,type="prob")
+knn.roc <- roc(predictor = knn.predict$yes,response=response.test,levels=rev(levels(response.test)))
+print(knn.roc)
+```
+On face value, our KNN model has an ROC of 93%.
+
+```{r}
+#SVM - 
+set.seed(600)
+library(kernlab)
+sigmarange <- sigest(as.matrix(reduced.train))
+svmgrid    <- expand.grid(.sigma = sigmarange[1],.C = 2 ** (seq(-4,4)))
+set.seed(601)
+svmfit <- train(x=reduced.train,y=response.train,method="svmRadial",tuneGrid = svmgrid,metric="ROC", fit=FALSE, trControl = ctrl)
+svm.predict <- predict(svmfit,reduced.test,type='prob')
+svm.roc <-  roc(predictor = svm.predict$yes,response=response.test,levels=rev(levels(response.test)))
+print(svm.roc)
+```
+Given our heavy dependence on categorical variable, it's intuitive that our SVM model did not perform as well as KNN.
+
+```{r}
+#NSC
+set.seed(529)
+nscGrid <- data.frame(.threshold = 0:25)
+nscTuned <- train(x = reduced.train,y = response.train,method = "pam",tuneGrid = nscGrid,metric= "ROC",trControl = ctrl)
+nsc.predict <- predict(nscTuned,reduced.test,type='prob')
+nsc.roc <- roc(predictor=nsc.predict$yes,response=response.test,levels=rev(levels(response.test)))
+print(nsc.roc)
+```
+Our Nearest shrinking centroid model performs considerably better than our SVM model, but still underperforms relative to KNN.
+Next, we can consider logistic regression:
+
+```{r}
+#glm using only continuous vars
+set.seed(289)
+glmTuned <- train(x=reduced.train,y=response.train,method="glm",metric="ROC",trControl=ctrl)
+glm.predict <- predict(glmTuned,reduced.test,type='prob')
+glm.roc <- roc(predictor=glm.predict$yes,response=response.test,levels=rev(levels(response.test)))
+print(glm.roc)
+
+#glm using the entire set
+set.seed(628)
+train <- cbind(predictors.train,response.train)
+train$response.train=as.factor(train$response.train)
+glm2 <- glm(response.train ~ .,data=train,family=binomial)
+sucProb <-1 - predict(glm2,newdata=predictors.test,type="response")
+glm2.roc = roc(predictor = sucProb,response=response.test,levels=rev(levels(response.test)))
+print(glm2.roc)
+```
+We find that the use of logistic regression gives us robust performance that outpaces KNN.
+```{r}
+#NN
+set.seed(1028)
+nnetgrid = expand.grid(.size = 5:10, .decay  = c(0,.1,1,2))
+maxsize = max(nnetgrid$.size)
+numwts   = (maxsize *(length(predictors.train)+1) + maxsize + 1)
+nnetfit = train(x=predictors.train,y=response.train,method="nnet",metric="ROC",preProcess = c("spatialSign"), tuneGrid = nnetgrid, trace=FALSE,maxit=1000,MaxNWts =  280, trControl = ctrl)
+
+nnetfit.pred = predict(nnetfit,predictors.test,type='prob')
+nnetfit.roc = roc(predictor=nnetfit.pred$yes,response=response.test,levels=rev(levels(response.test)))
+print(nnetfit.roc)
+```
+Our Neural Net also performs very well, but no more than logistic regression. We would consider parsimony a driving factor in modeling strategy and still take logistic regression over NN. 
+
+```{r}
+#add RF here 
+set.seed(972)
+library(randomForest)
+rfmodel<- train(x=predictors.train,y=response.train,method="rf",metric="ROC",trace=FALSE,trControl=ctrl)
+rfpredict <- predict(rfmodel,predictors.test,type='prob')
+rf.roc <- roc(predictor=rfpredict$yes,response=response.test,levels=rev(levels(response.test)))
+print(rf.roc)
+
+```
+Our RF model also outperforms some more complex counterparts such as SVM and NN, making it another prime candidate for model selection,
+but ultimately less parsimonious than logistic regression. We can consider boosted trees as another alternative:
+
+
 
