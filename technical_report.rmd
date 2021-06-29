@@ -2,17 +2,14 @@
 title: "Applied Predictive Modeling - Predicting Heart Disease"
 author: "Filipp Krasovsky & Rudy Fasano"
 date: "6/10/2021"
-output: pdf_document
+output:
+  pdf_document: default
+  word_document: default
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
-
-For your technical report:
-Include a clearly defined problem statement.
-Describe your analysis of the data.
-Include a detailed solution.
 
 This report focuses on analyzing a collection of anonymized medical records (n=303) with the intent of designing a model that can accurately predict the incidence of heart disease given an array of biological factors such as age, sex, blood cholestrol, etc. The modeling question before us stands as follows: "Given some combination of medical information about a patient, is a patient more likely than not to contract heart disease?" 
 
@@ -34,8 +31,11 @@ slp: slope - no context was available for this dataset.
 caa: number of major vessels.
 thall: the thal rate - a discrete ratio variable with no context provided.
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 #load in our dataset
+require(caret)
+require(pROC)
+require(ggplot2)
 df = read.csv('heart.csv',TRUE)
 df$output = as.factor(df$output)
 df$cp = as.factor(df$cp)
@@ -51,34 +51,34 @@ df$caa = as.factor(df$caa)
 
 We begin by noting that there is no class imbalance in our dataset:
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 #plot a histogram of the response variable
 plot(df$output,main="Ditribution of Response Variable")
 ```
-```{r}
+
+```{r message=FALSE, warning=FALSE}
 #print distribution by percentage
 print((table(df$output)/nrow(df))*100)
 ```
 As demonstrated, we have a low class imbalance and probably will not need any sampling methods that require us to balance classes across samples, which allows us to move straight into k-fold cross validation, bagging, and bootstrapping.
 Of our predictor space, five variables are non-categorical, so we can proceed by examining their distributions relative to the response variable as well as any possible between-predictor relationships:
 
-```{r}
-require(ggplot2)
+```{r message=FALSE, warning=FALSE}
 ggplot(df,aes(x=age,group=output,fill=output))+geom_bar()
 ```
 Starting with age, we observe that that the incidence of heart dominates samples with ages <= 55, while being more or less balanced for larger age values. When we observe this relationship for resting heart rates (trtbps), the most obvious face-value observation is that resting heart rate values smaller than 120 bps are disproportionately associated with the risk of heart attack (output=1):
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 ggplot(df,aes(x=trtbps,group=output,fill=output))+geom_bar(stat = 'count')+ggtitle("resting heart rates vs. Heart Attack")
 ```
 Another intuitive hypothesis is that higher rates of cholesterol are strongly associated with a higher incidence of heart attack.
 For this examination, we can use a box and whisker plot. Our findings suggest that those samples with an incidence of heart attack had a smaller average cholesterol value but more outliers gravitating towards the higher end of cholesterol levels.
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 plot(df$output,df$chol,main="Boxplot of Cholesterol vs. Heart Attack Response",xlab="Heart Attack (0=no 1=yes)",ylab="Cholesterol levels")
 ```
 However, given the motivation to explore this relationship further, we can consider a t-test to determine if the mean cholesterol levels are significantly different between those who did and did not have a heart attack:
-```{r}
+```{r message=FALSE, warning=FALSE}
 response.1 <- which(df$output==1)
 x1 = df[response.1,]$chol 
 x2 = df[-response.1,]$chol 
@@ -91,34 +91,34 @@ Therefore, at a significance level of alpha = 0.05 that we do not have enough ev
 Notable findings about the imbalance of heart attack patients, however, include the gender disparity. 
 We first begin by  observing the imbalance in data between men and women (0=women, 1=men):
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 tb.sex = (as.table(table(df$sex,df$output)))
 print(tb.sex)
 ```
 We find that while there are 96 female sample points, there are 207 male points, more than twice the number of female participants.
 Notwithstanding this, we find that the ratio of women who get heart attacks is much higher than that of men:
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 print(prop.table(tb.sex,margin=1))
 ```
 Other notable findings include the observation that heart attacks are significantly less likely for the lowest possible cp level.
 Although the description of this dataset labels data values 1-4 as increasing levels of angina pain, there doesn't seem to be any presence of values higher than 3. Consequently, we have to assume that the lowest level of the cp column is either the absence of angina entirely or an indicator of the presence of normal angina. Either way, the intuition still stands that non-acute/non-irregular levels of Angina (as well as the absence of angina entirely) are less likely to be associated with the incidence of a heart attack:
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 ggplot(df,aes(x=cp,group=output,fill=output))+geom_bar(stat='count', position = 'fill')+ggtitle("Chest Pain vs. Heart Attack")
 ```
 Detectiong of cardiographic results from the restecg variable suggest that the incidence of wave abnormality is significantly more associated with the risk of heart attack than normal results, and significantly moreso compared to incidences of ventricular hypertrophy. While this teams lacks the medical background to understand the implications of hypertrophy or wave abnormality, we can still understand that these conditions are abnormal, and so, intuitively affect heart functions.
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 ggplot(df,aes(x=restecg,group=output,fill=output))+geom_bar(stat='count', position = 'fill')+ggtitle("Cardiographic Results vs. Heart Attack")
 ```
 Carrying on in the same vein, our team also identified an intuitive relationship between the response variable and the thalachh variable, which corresponds to the maximum heart rate achieved. We find that higher maximum heart rates correspond more frequently to a higher incidence of heart attack:
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 ggplot(df,aes(x=thalachh,group=output,fill=output))+geom_bar()+ggtitle("Max. Heart rate vs. Heart Attack")
 ```
 We further confirm this intuition with a t-test at a significance level of 0.05:
-```{r}
+```{r message=FALSE, warning=FALSE}
 x = subset(df,output==1)$thalachh 
 y = subset(df,output==0)$thalachh
 thaltest = t.test(x,y)
@@ -128,31 +128,31 @@ The mean max. heart rate for those who experienced a heart attack is significant
 Conversely, the data supports the claim that individuals who suffer from exercise induced angina are less likely to suffer a heart attack.
 While this was largely surprising during EDA, an intuitive explanation might include that individuals suffering from an exercise-induced condition may be more resistant to a heart attack based on their athletic activity:
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 ggplot(df,aes(x=exng,group=output,fill=output))+geom_bar()+ggtitle("Exercise Induced Angina (1=yes) vs. Heart Attack")
 ```
 
 Furthermore, while we were unable to determine the context for the slope variable (slp) in the dataset, we did find that it significantly separates heart attack incidence based on its three unique values (0-2). In particular, we find that patients with a slope of 2 are significantly more likely to experience a heart attack:
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 df$slp = as.factor(df$slp)
 ggplot(df,aes(x=slp,group=output,fill=output))+geom_bar(stat='count',position='fill')+ggtitle("slope vs. Heart Attack")
 ```
 Similarly, while we found no background explanation on how to interpret the thall rate, we did find that those patients with a value of 0 and 2 had a significantly higher association with heart attack than values of 1 and 3:
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 ggplot(df,aes(x=thall,group=output,fill=output))+geom_bar(stat='count',position='fill')+ggtitle("Thall Rate vs. Heart Attack")
 ```
 The number of major vessels also seems to have a significant effect on separating our response variable - individuals with zero and four major vessels are disproportionately associated with the incidence of heart attack:
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 ggplot(df,aes(x=caa,group=output,fill=output))+geom_bar(stat='count',position='fill')+ggtitle("Number of Major Vessels vs. Heart Attack")
 ```
 
 
 Finally, we find that individuals with a lower resting blood sugar seem to have a higher incidence of heart attacks.
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 ggplot(df,aes(x=fbs,group=output,fill=output))+geom_bar(stat='count', position = 'fill')+ggtitle("Fasting Blood Sugar vs. Heart Attack")
 ```
 Moving forward with data pre-processing, we can center and scale our continuous predictors: 
@@ -161,18 +161,18 @@ age, trtbps, chol, thalachh, and oldpeak.
 Because our predictor space is only 13 variables and n = 303, we can afford a 90-10 split between our training and testing set as well.
 We will also engage in a 10-fold cross validation for model training.
 
-```{r}
-require(caret)
-
+```{r message=FALSE, warning=FALSE}
 cont_vars = c("age","trtbps","chol","thalachh","oldpeak")
 df.cont <- df[,cont_vars]
 print(findCorrelation(cor(df.cont))) #no correlated predictors for our continuous variables.
 
 df$output = ifelse(df$output==1,"yes","no")
 
-#center and scale the continuous variables. inspecting
+#center and scale the continuous variables
 df = predict(preProcess(df,method=c("center","scale")),df)
 
+#partition 90-10
+set.seed(10)
 trainingRows <- createDataPartition(df$output,p=0.9,list=FALSE)
 
 predictors = subset(df,select=-c(output))
@@ -192,24 +192,24 @@ reduced.test     = df.cont[-trainingRows,]
 Because this is a classification challenge, we can consider classification models only (ie Logistc regression, QDA/LDA, Knn, etc.)
 We can create a hunch for whether or not the business problem is linearly separable by looking at scatter plots of our continuous data:
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 ggplot(df,aes(x=trtbps,y=oldpeak,group=output))+geom_point(aes(color=output))+ggtitle("Old Peak vs. resting blood pressure")
 ```
-```{r}
+```{r message=FALSE, warning=FALSE}
 ggplot(df,aes(x=trtbps,y=thalachh,group=output))+geom_point(aes(color=output))+ggtitle("Highest Heart Rate Achieved vs. resting blood pressure")
 ```
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 ggplot(df,aes(x=trtbps,y=chol,group=output))+geom_point(aes(color=output))+ggtitle("Cholesterol vs. resting blood pressure")
 ```
-```{r}
+```{r message=FALSE, warning=FALSE}
 ggplot(df,aes(x=trtbps,y=age,group=output))+geom_point(aes(color=output))+ggtitle("Age vs. resting blood pressure")
 ```
 Based on a preliminary assessment, it seems unlikely that the problem would be linearly separable between the two response values.
 From here, we would favor nonlinear separation methods like logistic regression, QDA, NN, SVM, KNN, NSC, and Random Forests.
 Given that only five our predictors are numeric, we would have to limit the application of qda/svm/etc to only those predictors.
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 ctrl <- trainControl(summaryFunction = twoClassSummary, classProbs = TRUE)
 knngrid <- data.frame(.k=c(1:40))
 
@@ -228,23 +228,25 @@ knn.predict <- predict(knnfit,predictors.test,type="prob")
 knn.roc <- roc(predictor = knn.predict$yes,response=response.test,levels=rev(levels(response.test)))
 print(knn.roc)
 ```
-On face value, our KNN model has an ROC of 93%.
+Next, we move on to our SVM model.
 
-```{r}
-#SVM - 
+```{r message=FALSE, warning=FALSE}
+#SVM - set tuning param grid 
 set.seed(600)
 library(kernlab)
 sigmarange <- sigest(as.matrix(reduced.train))
 svmgrid    <- expand.grid(.sigma = sigmarange[1],.C = 2 ** (seq(-4,4)))
+
+#randomize, train, predict
 set.seed(601)
 svmfit <- train(x=reduced.train,y=response.train,method="svmRadial",tuneGrid = svmgrid,metric="ROC", fit=FALSE, trControl = ctrl)
 svm.predict <- predict(svmfit,reduced.test,type='prob')
 svm.roc <-  roc(predictor = svm.predict$yes,response=response.test,levels=rev(levels(response.test)))
 print(svm.roc)
 ```
-Given our heavy dependence on categorical variable, it's intuitive that our SVM model did not perform as well as KNN.
+Given our heavy dependence on categorical variable, it's intuitive that our SVM model did not perform as well as expected.
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 #NSC
 set.seed(529)
 nscGrid <- data.frame(.threshold = 0:25)
@@ -253,10 +255,9 @@ nsc.predict <- predict(nscTuned,reduced.test,type='prob')
 nsc.roc <- roc(predictor=nsc.predict$yes,response=response.test,levels=rev(levels(response.test)))
 print(nsc.roc)
 ```
-Our Nearest shrinking centroid model performs considerably better than our SVM model, but still underperforms relative to KNN.
-Next, we can consider logistic regression:
+Next, we consider logistic regression both with continuous only predictors and categorical predictors. 
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 #glm using only continuous vars
 set.seed(289)
 glmTuned <- train(x=reduced.train,y=response.train,method="glm",metric="ROC",trControl=ctrl)
@@ -273,8 +274,9 @@ sucProb <-1 - predict(glm2,newdata=predictors.test,type="response")
 glm2.roc = roc(predictor = sucProb,response=response.test,levels=rev(levels(response.test)))
 print(glm2.roc)
 ```
-We find that the use of logistic regression gives us robust performance that outpaces KNN.
-```{r}
+We now explore NN: 
+
+```{r message=FALSE, warning=FALSE}
 #NN
 set.seed(1028)
 nnetgrid = expand.grid(.size = 5:10, .decay  = c(0,.1,1,2))
@@ -282,13 +284,14 @@ maxsize = max(nnetgrid$.size)
 numwts   = (maxsize *(length(predictors.train)+1) + maxsize + 1)
 nnetfit = train(x=predictors.train,y=response.train,method="nnet",metric="ROC",preProcess = c("spatialSign"), tuneGrid = nnetgrid, trace=FALSE,maxit=1000,MaxNWts =  280, trControl = ctrl)
 
+#predict, calculate roc 
 nnetfit.pred = predict(nnetfit,predictors.test,type='prob')
 nnetfit.roc = roc(predictor=nnetfit.pred$yes,response=response.test,levels=rev(levels(response.test)))
 print(nnetfit.roc)
 ```
-Our Neural Net also performs very well, but no more than logistic regression. We would consider parsimony a driving factor in modeling strategy and still take logistic regression over NN. 
+Our Neural Net also performs very well, but faces technical limitations in an R setting. We now consider RF implementation:
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 #RF
 set.seed(972)
 library(randomForest)
@@ -298,10 +301,9 @@ rf.roc <- roc(predictor=rfpredict$yes,response=response.test,levels=rev(levels(r
 print(rf.roc)
 
 ```
-Our RF model also outperforms some more complex counterparts such as SVM and NN, making it another prime candidate for model selection,
-but ultimately less parsimonious than logistic regression. We can consider boosted trees as another alternative:
+Along the same vein of decision tree use, we can also implement gbm:
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 #Boosted trees
 set.seed(2055)
 gbmGrid <- expand.grid(.interaction.depth = seq(1, 7, by = 2), .n.trees = seq(100, 1000, by = 100), .shrinkage = c(0.01, 0.1), .n.minobsinnode=30)
@@ -310,10 +312,23 @@ gbm.predict = predict(gbmTune,predictors.test,type='prob')
 gbm.roc <- roc(predictor=gbm.predict$yes,response=response.test,levels=rev(levels(response.test)))
 print(gbm.roc)
 ```
-Our boosted tree performs at about the same level as our RF model. Based on computational requirements, we would prefer the RF model between these two, but ultimately prefer glm.
+Finally, we print the optimal tuning for  each model:
 
-We plot the ROC curves for our models together to determine that an all-predictor logistic regression satisfies our modeling objective best.
 ```{r}
+#print tuning params for each model except glm
+print(gbmTune$bestTune)
+print(knnfit$bestTune)
+print(nnetfit$bestTune)
+print(nscTuned$bestTune)
+print(rfmodel$bestTune)
+print(svmfit$bestTune)
+```
+
+
+We plot the ROC curves for our models together to determine which model best satisfied our ROC expectations:
+
+```{r message=FALSE, warning=FALSE}
+#plot ROC curves for each model 
 plot(glm2.roc,col='red',main="Plot of ROC curves",lty=1,type="o",pch="*")
 lines(gbm.roc,col='lightgreen',lty=2)
 lines(knn.roc,col='navyblue',lty=2)
